@@ -37,8 +37,11 @@ namespace Colibri.Grasshopper
         private bool _write = false;
         private bool _mongo = false;
         private string _collection = "";
+        private bool _started_daemon = false;
+        private string _session_guid;
 
-        private List<string> _headers = new List<string>();
+        private List<string> _input_headers = new List<string>();
+        private List<string> _output_headers = new List<string>();
         /// <summary>
         /// Each implementation of GH_Component must provide a public 
         /// constructor without any arguments.
@@ -127,6 +130,23 @@ namespace Colibri.Grasshopper
 
             this._collection = collection;
 
+            // Start Metadata Daemon
+            if (!this._started_daemon)
+            {
+                ProcessStartInfo start = new ProcessStartInfo();
+                start.FileName = "C:\\Python27\\python.exe";
+                string filepath = String.Format("C:\\Users\\{0}\\Documents\\GitHub\\CORE.Learn\\Data\\DataGenerator\\Colibri\\mongo-metadata-daemon.py", Environment.UserName);
+                string sessionGUID = Guid.NewGuid().ToString();
+                this._session_guid = sessionGUID; 
+                start.Arguments = String.Format("{0} {1} {2}", filepath, this._collection, sessionGUID);
+                start.UseShellExecute = false;
+                start.RedirectStandardOutput = false;
+                start.CreateNoWindow = true;
+                Process.Start(start);
+
+                this._started_daemon = true;
+            }
+
             //operations is ExpandoObject
             inJSON.RemoveAll(item => item == null);
             var JSON = new threeDParam();
@@ -137,14 +157,15 @@ namespace Colibri.Grasshopper
 
             int count = 0;
             // Extract headers from outputs
-            this._headers = new List<string>();
+            this._input_headers = new List<string>();
+            this._output_headers = new List<string>();
             foreach (string item in inputs)
             {
                 string columnName = item.Split(',')[0];
                 columnName = columnName.Substring(1, columnName.Length - 1);
                 columnName = String.Format("{0}[{1}]", columnName, count.ToString());
                 count += 1;
-                this._headers.Add(columnName);
+                this._input_headers.Add(columnName);
             }
             foreach (string item in outputs)
             {
@@ -152,7 +173,7 @@ namespace Colibri.Grasshopper
                 columnName = columnName.Substring(1, columnName.Length - 1);
                 columnName = String.Format("{0}[{1}]", columnName, count.ToString());
                 count += 1;
-                this._headers.Add(columnName);
+                this._output_headers.Add(columnName);
             }
 
             Dictionary<string,string> inputCSVstrings = ColibriBase.FormatDataToCSVstring(inputs,"in:");
@@ -290,6 +311,9 @@ namespace Colibri.Grasshopper
                         {
                             string[] dataItems = writeInData.Split(',');
                             Dictionary<string, object> mongoDocument = new Dictionary<string, object>();
+                            Dictionary<string, object> inputDict = new Dictionary<string, object>();
+                            Dictionary<string, object> outputDict = new Dictionary<string, object>();
+
                             for (int i = 0; i < dataItems.Count() - 1; i++)
                             {
                                 string stringValue = dataItems[i];
@@ -310,17 +334,46 @@ namespace Colibri.Grasshopper
 
                                 if (gotDouble)
                                 {
-                                    mongoDocument.Add(this._headers[i], doubleValue);
+                                    if (i < this._input_headers.Count())
+                                    {
+                                        inputDict.Add(this._input_headers[i], doubleValue);
+                                    }
+                                    else
+                                    {
+                                        outputDict.Add(this._output_headers[i - this._input_headers.Count()], doubleValue);
+                                    }
+                                    
                                 }
                                 else if (gotInt)
                                 {
-                                    mongoDocument.Add(this._headers[i], intValue);
+                                    if (i < this._input_headers.Count())
+                                    {
+                                        inputDict.Add(this._input_headers[i], intValue);
+                                    }
+                                    else
+                                    {
+                                        outputDict.Add(this._output_headers[i - this._input_headers.Count()], intValue);
+                                    }
                                 }
                                 else
                                 {
-                                    mongoDocument.Add(this._headers[i], stringValue);
+                                    if (i < this._input_headers.Count())
+                                    {
+                                        inputDict.Add(this._input_headers[i], stringValue);
+                                    }
+                                    else
+                                    {
+                                        outputDict.Add(this._output_headers[i - this._input_headers.Count()], stringValue);
+                                    }
                                 }
+
+
                             }
+
+                            mongoDocument.Add("inputs", inputDict);
+                            mongoDocument.Add("outputs", outputDict);
+                            mongoDocument.Add("session", this._session_guid);
+                            
 
                             string serialized = JsonConvert.SerializeObject(mongoDocument).Replace("\"", "\\\"");
                             ProcessStartInfo start = new ProcessStartInfo();
@@ -425,6 +478,7 @@ namespace Colibri.Grasshopper
         private void Menu_DoClick_FinishRest(object sender, EventArgs e)
         {
             this.setWriteFileToFalse();
+            this.setMongoToFalse();
             this.OverrideTypes = OverrideMode.FinishTheRest;
             updateMsg();
             
@@ -433,6 +487,7 @@ namespace Colibri.Grasshopper
         private void Menu_DoClick_AppendAll(object sender, EventArgs e)
         {
             this.setWriteFileToFalse();
+            this.setMongoToFalse();
             this.OverrideTypes = OverrideMode.AppendAllToTheEnd;
             updateMsg();
         }
@@ -440,6 +495,7 @@ namespace Colibri.Grasshopper
         private void Menu_DoClick_Override(object sender, EventArgs e)
         {
             this.setWriteFileToFalse();
+            this.setMongoToFalse();
             this.OverrideTypes = OverrideMode.OverrideAll;
             updateMsg();
         }
