@@ -14,6 +14,8 @@ using System.Windows.Forms;
 using System.Linq;
 using GH_IO.Serialization;
 using Grasshopper.Kernel.Parameters;
+using Newtonsoft.Json;
+using System.Diagnostics;
 
 
 namespace Colibri.Grasshopper
@@ -33,7 +35,10 @@ namespace Colibri.Grasshopper
         //private bool _isAlwaysOverrideFolder = false;
         
         private bool _write = false;
+        private bool _mongo = false;
+        private string _collection = "";
 
+        private List<string> _headers = new List<string>();
         /// <summary>
         /// Each implementation of GH_Component must provide a public 
         /// constructor without any arguments.
@@ -67,10 +72,15 @@ namespace Colibri.Grasshopper
             pManager[4].Optional = true;
             pManager[4].WireDisplay = GH_ParamWireDisplay.faint;
             pManager[4].DataMapping = GH_DataMapping.Flatten;
+            pManager.AddBooleanParameter("Mongo", "Mongo", "Push to Mongodb instead of using a CSV", GH_ParamAccess.item, false);
+            pManager[5].Optional = true;
+            pManager.AddTextParameter("Collection", "Collection", "Mongodb Collection", GH_ParamAccess.item);
+            pManager[6].Optional = true;
 
-            pManager.AddBooleanParameter("Write?", "Write?", "Set to true to write files to disk.", GH_ParamAccess.item,false);
+            pManager.AddBooleanParameter("Write?", "Write?", "Set to true to write files to disk.", GH_ParamAccess.item, false);
             
-            
+
+
         }
 
         /// <summary>
@@ -93,6 +103,8 @@ namespace Colibri.Grasshopper
             
             
             bool writeFile = false;
+            bool mongo = false;
+            string collection = "";
 
             //input variables
             List<string> inputs = new List<string>();
@@ -109,7 +121,11 @@ namespace Colibri.Grasshopper
             DA.GetDataList(2, outputs);
             DA.GetData(3, ref imgParams);
             DA.GetDataList(4,  inJSON);
-            DA.GetData(5, ref writeFile);
+            DA.GetData(5, ref mongo);
+            DA.GetData(6, ref collection);
+            DA.GetData(7, ref writeFile);
+
+            this._collection = collection;
 
             //operations is ExpandoObject
             inJSON.RemoveAll(item => item == null);
@@ -119,6 +135,25 @@ namespace Colibri.Grasshopper
                 JSON = new threeDParam(inJSON);
             }
 
+            int count = 0;
+            // Extract headers from outputs
+            this._headers = new List<string>();
+            foreach (string item in inputs)
+            {
+                string columnName = item.Split(',')[0];
+                columnName = columnName.Substring(1, columnName.Length - 1);
+                columnName = String.Format("{0}[{1}]", columnName, count.ToString());
+                count += 1;
+                this._headers.Add(columnName);
+            }
+            foreach (string item in outputs)
+            {
+                string columnName = item.Split(',')[0];
+                columnName = columnName.Substring(1, columnName.Length - 1);
+                columnName = String.Format("{0}[{1}]", columnName, count.ToString());
+                count += 1;
+                this._headers.Add(columnName);
+            }
 
             Dictionary<string,string> inputCSVstrings = ColibriBase.FormatDataToCSVstring(inputs,"in:");
             Dictionary<string, string> outputCSVstrings = ColibriBase.FormatDataToCSVstring(outputs,"out:");
@@ -151,13 +186,16 @@ namespace Colibri.Grasshopper
                 {
                     _isFirstTimeOpen = false;
                     setWriteFileToFalse();
+                    setMongoToFalse();
                     return;
                 }
                 this._write = writeFile;
+                this._mongo = mongo;
             }
             else
             {
                 this._write = false;
+                this._mongo = false;
             }
             
             //var ViewNames = new List<string>();
@@ -242,8 +280,58 @@ namespace Colibri.Grasshopper
 
                         //save csv // add data at the end 
                         //writeInData = string.Format("{0},{1},{2}\n", valueReady, imgFileName, jsonFileName);
-                        writeInData += "\n";
-                        File.AppendAllText(csvPath, writeInData);
+                        
+                        if (!this._mongo)
+                        {
+                            writeInData += "\n";
+                            File.AppendAllText(csvPath, writeInData);
+                        }
+                        else
+                        {
+                            string[] dataItems = writeInData.Split(',');
+                            Dictionary<string, object> mongoDocument = new Dictionary<string, object>();
+                            for (int i = 0; i < dataItems.Count() - 1; i++)
+                            {
+                                string stringValue = dataItems[i];
+                                double doubleValue = 0;
+                                int intValue = 0;
+
+                                bool gotDouble = false;
+                                bool gotInt = false;
+
+                                if (stringValue.Contains("."))
+                                {
+                                    gotDouble = double.TryParse(stringValue, out doubleValue);
+                                }
+                                else
+                                {
+                                    gotInt = int.TryParse(stringValue, out intValue);
+                                }
+
+                                if (gotDouble)
+                                {
+                                    mongoDocument.Add(this._headers[i], doubleValue);
+                                }
+                                else if (gotInt)
+                                {
+                                    mongoDocument.Add(this._headers[i], intValue);
+                                }
+                                else
+                                {
+                                    mongoDocument.Add(this._headers[i], stringValue);
+                                }
+                            }
+
+                            string serialized = JsonConvert.SerializeObject(mongoDocument).Replace("\"", "\\\"");
+                            ProcessStartInfo start = new ProcessStartInfo();
+                            start.FileName = "C:\\Python27\\python.exe";
+                            string filepath = String.Format("C:\\Users\\{0}\\Documents\\GitHub\\CORE.Learn\\Data\\DataGenerator\\Colibri\\mongo-connection.py", Environment.UserName);
+                            start.Arguments = String.Format("{0} {1} \"{2}\"", filepath, this._collection, serialized);
+                            start.UseShellExecute = false;
+                            start.RedirectStandardOutput = false;
+                            start.CreateNoWindow = true;
+                            Process.Start(start);
+                        }
                         
                         //add this line to our list of already written lines
                         _alreadyWrittenLines.Add("[FlyID] "+flyID);
@@ -493,6 +581,19 @@ namespace Colibri.Grasshopper
                     writeFileToggle.ExpireSolution(true);
                 }
                 
+            }
+        }
+
+        public void setMongoToFalse()
+        {
+            if (this.Params.Input[5].Sources.Any())
+            {
+                var mongoToggle = this.Params.Input[5].Sources.First() as GH_BooleanToggle;
+                if (mongoToggle != null)
+                {
+                    mongoToggle.Value = false;
+                    mongoToggle.ExpireSolution(true);
+                }
             }
         }
 

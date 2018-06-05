@@ -426,6 +426,7 @@ namespace Colibri.Grasshopper
                 if (_aggObj != null)
                 {
                     _aggObj.setWriteFileToFalse();
+                    _aggObj.setMongoToFalse();
                 }
 
             }
