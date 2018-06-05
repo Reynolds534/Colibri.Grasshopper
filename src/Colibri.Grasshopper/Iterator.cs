@@ -400,6 +400,7 @@ namespace Colibri.Grasshopper
 
         private void OnSolutionEnd(object sender, GH_SolutionEventArgs e)
         {
+            _aggObj._started_daemon = false;
             // Unregister the event, we don't want to get called again.
             e.Document.SolutionEnd -= OnSolutionEnd;
 

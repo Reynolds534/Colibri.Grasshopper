@@ -37,7 +37,7 @@ namespace Colibri.Grasshopper
         private bool _write = false;
         private bool _mongo = false;
         private string _collection = "";
-        private bool _started_daemon = false;
+        public bool _started_daemon = false;
         private string _session_guid;
 
         private List<string> _input_headers = new List<string>();
