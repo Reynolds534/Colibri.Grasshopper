@@ -79,8 +79,10 @@ namespace Colibri.Grasshopper
             pManager[5].Optional = true;
             pManager.AddTextParameter("Collection", "Collection", "Mongodb Collection", GH_ParamAccess.item);
             pManager[6].Optional = true;
-
+            pManager.AddTextParameter("Notes", "Notes", "Notes for the metadata document", GH_ParamAccess.item, "None");
+            pManager[7].Optional = true;
             pManager.AddBooleanParameter("Write?", "Write?", "Set to true to write files to disk.", GH_ParamAccess.item, false);
+            
             
 
 
@@ -108,6 +110,7 @@ namespace Colibri.Grasshopper
             bool writeFile = false;
             bool mongo = false;
             string collection = "";
+            string notes = "";
 
             //input variables
             List<string> inputs = new List<string>();
@@ -126,7 +129,8 @@ namespace Colibri.Grasshopper
             DA.GetDataList(4,  inJSON);
             DA.GetData(5, ref mongo);
             DA.GetData(6, ref collection);
-            DA.GetData(7, ref writeFile);
+            DA.GetData(7, ref notes);
+            DA.GetData(8, ref writeFile);
 
             this._collection = collection;
 
@@ -138,7 +142,7 @@ namespace Colibri.Grasshopper
                 string filepath = String.Format("C:\\Users\\{0}\\Documents\\GitHub\\CORE.Learn\\Data\\DataGenerator\\Colibri\\mongo-metadata-daemon.py", Environment.UserName);
                 string sessionGUID = Guid.NewGuid().ToString();
                 this._session_guid = sessionGUID; 
-                start.Arguments = String.Format("{0} {1} {2}", filepath, this._collection, sessionGUID);
+                start.Arguments = String.Format("{0} {1} {2} \"{3}\"", filepath, this._collection, sessionGUID, notes);
                 start.UseShellExecute = false;
                 start.RedirectStandardOutput = false;
                 start.CreateNoWindow = true;
