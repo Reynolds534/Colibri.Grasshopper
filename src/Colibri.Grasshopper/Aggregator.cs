@@ -42,6 +42,8 @@ namespace Colibri.Grasshopper
 
         private List<string> _input_headers = new List<string>();
         private List<string> _output_headers = new List<string>();
+
+        private readonly GH_Document GrasshopperDocument;
         /// <summary>
         /// Each implementation of GH_Component must provide a public 
         /// constructor without any arguments.
@@ -81,6 +83,10 @@ namespace Colibri.Grasshopper
             pManager[6].Optional = true;
             pManager.AddTextParameter("Notes", "Notes", "Notes for the metadata document", GH_ParamAccess.item, "None");
             pManager[7].Optional = true;
+            pManager.AddTextParameter("Mode", "Mode", "[0] - Don't check for duplicates\n[1] - Don't write if duplicate\n[2] - Overwrite if duplicate", GH_ParamAccess.item, "0");
+            pManager[8].Optional = true;
+            pManager.AddTextParameter("Version Data", "Version Data", "Assembly Version Data", GH_ParamAccess.list, "0");
+            pManager[9].Optional = true;
             pManager.AddBooleanParameter("Write?", "Write?", "Set to true to write files to disk.", GH_ParamAccess.item, false);
             
             
@@ -111,6 +117,9 @@ namespace Colibri.Grasshopper
             bool mongo = false;
             string collection = "";
             string notes = "";
+            string mode = "";
+
+            List<string> version_metadata = new List<string>();
 
             //input variables
             List<string> inputs = new List<string>();
@@ -130,7 +139,9 @@ namespace Colibri.Grasshopper
             DA.GetData(5, ref mongo);
             DA.GetData(6, ref collection);
             DA.GetData(7, ref notes);
-            DA.GetData(8, ref writeFile);
+            DA.GetData(8, ref mode);
+            DA.GetDataList(9, version_metadata);
+            DA.GetData(10, ref writeFile);
 
             this._collection = collection;
 
@@ -142,7 +153,7 @@ namespace Colibri.Grasshopper
                 string filepath = String.Format("C:\\Users\\{0}\\Documents\\GitHub\\CORE.Learn\\Data\\DataGenerator\\Colibri\\mongo-metadata-daemon.py", Environment.UserName);
                 string sessionGUID = Guid.NewGuid().ToString();
                 this._session_guid = sessionGUID; 
-                start.Arguments = String.Format("{0} {1} {2} \"{3}\"", filepath, this._collection, sessionGUID, notes);
+                start.Arguments = String.Format("{0} {1} {2} \"{3}\" {4}", filepath, this._collection, sessionGUID, notes, Folder);
                 start.UseShellExecute = false;
                 start.RedirectStandardOutput = false;
                 start.CreateNoWindow = true;
@@ -383,7 +394,7 @@ namespace Colibri.Grasshopper
                             ProcessStartInfo start = new ProcessStartInfo();
                             start.FileName = "C:\\Python27\\python.exe";
                             string filepath = String.Format("C:\\Users\\{0}\\Documents\\GitHub\\CORE.Learn\\Data\\DataGenerator\\Colibri\\mongo-connection.py", Environment.UserName);
-                            start.Arguments = String.Format("{0} {1} \"{2}\"", filepath, this._collection, serialized);
+                            start.Arguments = String.Format("{0} {1} \"{2}\" {3}", filepath, this._collection, serialized, mode);
                             start.UseShellExecute = false;
                             start.RedirectStandardOutput = false;
                             start.CreateNoWindow = true;
